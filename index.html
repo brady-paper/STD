@@ -40,6 +40,16 @@ repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0 40px,transparent 40px 80px)}
 .balloon{position:absolute;width:22px;height:28px;border-radius:50%;z-index:20;box-shadow:inset -4px -5px rgba(0,0,0,.18),2px 2px 3px rgba(0,0,0,.25)}
 .balloon:after{content:"";position:absolute;width:5px;height:5px;background:inherit;left:8px;bottom:-3px;transform:rotate(45deg)}
 .string{position:absolute;width:1px;height:12px;background:#333;left:11px;top:28px}
+.balloonBadge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:10px;white-space:nowrap;text-shadow:0 0 3px #000;z-index:31;pointer-events:none}
+.balloon.boss{border-radius:50%;z-index:25}
+.bossLabel{position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:bold;color:#ff5a5a;text-shadow:0 0 4px #000;letter-spacing:1px;white-space:nowrap}
+.goalFarm{position:absolute;width:52px;height:64px;z-index:22;cursor:pointer}
+.goalPost{position:absolute;inset:0 4px 0 4px;border:5px solid #fff;border-bottom:0;border-radius:4px 4px 0 0;box-shadow:0 2px 4px rgba(0,0,0,.35)}
+.goalNet{position:absolute;inset:5px 8px 2px 8px;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.55) 0 1px,transparent 1px 7px),repeating-linear-gradient(-45deg,rgba(255,255,255,.55) 0 1px,transparent 1px 7px);opacity:.8}
+.goalLabel{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);font-size:16px}
+.goalFarm.level1 .goalPost{border-color:#ffe16b;box-shadow:0 0 8px rgba(255,225,107,.5)}
+.goalFarm.level2 .goalPost{border-color:#7cff7c;box-shadow:0 0 12px rgba(124,255,124,.6)}
+.goalFarm.level3 .goalPost{border-color:gold;box-shadow:0 0 18px gold,0 0 30px rgba(255,200,0,.55)}
 .soccerPlayer{position:absolute;width:52px;height:68px;z-index:30;transform-origin:center;cursor:pointer}
 .playerHead{position:absolute;width:24px;height:24px;background:#dfa06d;border-radius:50%;left:14px;top:0;border:2px solid #694127}
 .playerHead:before{content:"";position:absolute;width:24px;height:9px;background:#332015;border-radius:12px 12px 3px 3px;left:-2px;top:-2px}
@@ -97,6 +107,7 @@ repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0 40px,transparent 40px 80px)}
 .mapOption.selected{background:#318bd0;box-shadow:0 0 0 3px #ffe16b inset}
 .hideDecor .deco{display:none}
 #autoWaveButton.active{background:#27ae60}
+#speedButton.active{background:#27ae60}
 @media(max-width:950px){#game{transform:scale(.8);transform-origin:top center}#topbar{font-size:12px;gap:4px}.stat{padding:6px}}
 </style>
 </head>
@@ -112,6 +123,7 @@ repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0 40px,transparent 40px 80px)}
 <div id="message">Choose a difficulty!</div>
 <button onclick="startWave()">▶ Wave</button>
 <button id="autoWaveButton" onclick="toggleAutoWave()">🔁 Auto: Off</button>
+<button id="speedButton" onclick="toggleGameSpeed()">⏩ 1x Speed</button>
 <button id="pauseButton" onclick="togglePause()">⏸️</button>
 </div>
 
@@ -161,8 +173,10 @@ repeating-linear-gradient(0deg,rgba(0,0,0,.025) 0 40px,transparent 40px 80px)}
 
 <button id="menuButton" onclick="toggleTowerMenu()">&lt;</button>
 <div id="towerMenu"><h2>⚽ Players</h2><p>Start with 5 players. Unlock up to 50.</p><div id="playerButtons"></div>
+<h2>🥅 Economy</h2><p>Non-attacking structures that earn passive Coins.</p><div id="economyButtons"></div>
 <h2>🌍 Worlds</h2><p>Unlock new maps with Gems.</p><div id="worldButtons"></div>
 <h2>🚀 Boosts</h2><p>Permanent upgrades, paid in Gems.</p><div id="boostButtons"></div>
+<h2>⚡ Powers</h2><p>Temporary boosts, paid in Gems.</p><div id="powerButtons"></div>
 </div>
 
 <div id="upgradePanel">
@@ -215,9 +229,14 @@ const nums=[7,1,11,10,9,8,4,17,6,99,12,14,15,18,19,20,21,22,23,24,25,26,27,28,29
 const colors=["#3498db","#e74c3c","#2ecc71","#f1c40f","#9b59b6","#e67e22","#2980b9","#ff69b4","#795548","#ecf0f1"];
 const types={};
 for(let i=0;i<50;i++)types["player"+i]={price:40+i*25,gemCost:10+Math.round(i*(290/49)),damage:1+Math.floor(i/5),cooldown:Math.max(5,35-Math.floor(i*.55)),number:nums[i],name:names[i],color:colors[i%colors.length]};
+types.farm={price:300,gemCost:0,name:"Goal Farm",isFarm:true,incomeByLevel:[15,28,48,80]};
+const FARM_INTERVAL=6000;
 let money=500,coins=0,lives=20,wave=0,difficulty=null,paused=false,gameStarted=false,gameWon=false;
-let unlocked=["player0","player1","player2","player3","player4"],towers=[],balloons=[],selectedTower=null,selectedPlayer=null;
+let unlocked=["player0","player1","player2","player3","player4","farm"],towers=[],balloons=[],selectedTower=null,selectedPlayer=null;
 let autoWave=false,spawning=false,selectedMapId="classic";
+let gameSpeed=1;
+let powerCashMult=1,powerFireRateMult=1;
+let godMode=false;
 let waveSpawnedCount=0,waveTotalCount=0;
 
 let unlockedMaps=["classic","zigzag","river"];
@@ -274,13 +293,16 @@ function setMessage(x){document.getElementById("message").textContent=x}
 const BOOSTS={
  cash:{icon:"💰",label:"Cash Boost",desc:lvl=>"+"+(lvl*10)+"% Coins from popping balloons",baseCost:8,max:10},
  luck:{icon:"🍀",label:"Luck Boost",desc:lvl=>(lvl*2)+"% chance of a bonus Gem per pop",baseCost:10,max:10},
- gem:{icon:"💎",label:"Gem Boost",desc:lvl=>"+"+(lvl*15)+"% Gems from winning waves",baseCost:12,max:10}
+ gem:{icon:"💎",label:"Gem Boost",desc:lvl=>"+"+(lvl*15)+"% Gems from winning waves",baseCost:12,max:10},
+ lives:{icon:"❤️",label:"Life Boost",desc:lvl=>"+"+(lvl*2)+" starting lives (next run)",baseCost:9,max:10},
+ discount:{icon:"🏷️",label:"Bulk Discount",desc:lvl=>(lvl*2)+"% cheaper players & upgrades",baseCost:9,max:10}
 };
-let boosts={cash:0,luck:0,gem:0};
+let boosts={cash:0,luck:0,gem:0,lives:0,discount:0};
 function boostCost(type){return Math.round(BOOSTS[type].baseCost*Math.pow(1.4,boosts[type]))}
 function cashMultiplier(){return 1+boosts.cash*0.1}
 function luckChance(){return boosts.luck*0.02}
 function gemMultiplier(){return 1+boosts.gem*0.15}
+function discountMultiplier(){return 1-boosts.discount*0.02}
 function buyBoost(type){
  const b=BOOSTS[type];if(boosts[type]>=b.max){setMessage(b.label+" is already maxed!");return}
  const cost=boostCost(type);if(coins<cost){setMessage("Need "+cost+" Gems for "+b.label+".");return}
@@ -305,10 +327,37 @@ function buildWorldShop(){
   box.appendChild(btn);
  });
 }
+/* Activatable powers (BTD6-style instant abilities), paid for in Gems with a cooldown. */
+const POWERS={
+ whistle:{icon:"📣",label:"Coach's Whistle",desc:"2x player fire rate for 10s",cost:5,duration:10000,cooldown:30000},
+ cashdrop:{icon:"💵",label:"Cash Drop",desc:"2x Coins from pops for 10s",cost:5,duration:10000,cooldown:30000}
+};
+let powerState={whistle:{readyAt:0},cashdrop:{readyAt:0}};
+function activatePower(type){
+ if(!gameStarted||paused){setMessage("Start a game first!");return}
+ const p=POWERS[type],now=Date.now();
+ if(powerState[type].readyAt>now){setMessage(p.label+" is still on cooldown.");return}
+ if(coins<p.cost){setMessage("Need "+p.cost+" Gems for "+p.label+".");return}
+ coins-=p.cost;powerState[type].readyAt=now+p.cooldown;updateUI();buildPowerShop();saveGame(false);
+ if(type==="whistle"){powerFireRateMult=2;setTimeout(()=>{powerFireRateMult=1},p.duration)}
+ if(type==="cashdrop"){powerCashMult=2;setTimeout(()=>{powerCashMult=1},p.duration)}
+ setMessage(p.icon+" "+p.label+" activated!");
+ setTimeout(buildPowerShop,p.duration+50);
+}
+function buildPowerShop(){
+ const box=document.getElementById("powerButtons");if(!box)return;box.innerHTML="";
+ Object.keys(POWERS).forEach(type=>{
+  const p=POWERS[type],now=Date.now(),onCooldown=powerState[type].readyAt>now,secsLeft=Math.ceil((powerState[type].readyAt-now)/1000);
+  const btn=document.createElement("button");btn.className="towerOption";
+  btn.innerHTML=p.icon+" "+p.label+"<div class='stats'>"+p.desc+"</div><div class='price'>"+(onCooldown?("Cooldown: "+secsLeft+"s"):(p.cost+" Gems"))+"</div>";
+  btn.disabled=onCooldown;btn.onclick=()=>activatePower(type);box.appendChild(btn);
+ });
+}
+setInterval(()=>{if(document.getElementById("powerButtons"))buildPowerShop()},1000);
 function updateUI(){
  document.getElementById("money").textContent=money;
  document.getElementById("coins").textContent=coins;
- document.getElementById("lives").textContent=lives;
+ document.getElementById("lives").textContent=godMode?"∞":lives;
  document.getElementById("wave").textContent=difficulty?wave+" / "+difficulty.waves:"0";
  document.getElementById("balloonCount").textContent=waveSpawnedCount+" / "+waveTotalCount+(waveTotalCount?" ("+(waveTotalCount-waveSpawnedCount)+" left to spawn)":"");
 }
@@ -326,9 +375,15 @@ function buildShop(){
   b.onclick=()=>u?selectTower(id):buyTower(id);box.appendChild(b);
  }
 }
+function buildEconomyShop(){
+ const box=document.getElementById("economyButtons");if(!box)return;box.innerHTML="";
+ const f=types.farm,b=document.createElement("button");b.className="towerOption";
+ b.innerHTML="🥅 "+f.name+"<div class='price'>🪙 "+f.price+" Coins to place</div><div class='stats'>Doesn't attack — earns "+f.incomeByLevel[0]+"+ Coins every "+(FARM_INTERVAL/1000)+"s, upgradeable, unlimited placements</div>";
+ b.onclick=()=>selectTower("farm");box.appendChild(b);
+}
 function showDifficultyMenu(){document.getElementById("difficultyMenu").classList.add("open")}
 function startDifficulty(id){
- difficulty=difficulties[id];gameStarted=true;gameWon=false;paused=false;wave=0;lives=difficulty.lives;money=difficulty.money;spawning=false;waveSpawnedCount=0;waveTotalCount=0;
+ difficulty=difficulties[id];gameStarted=true;gameWon=false;paused=false;wave=0;lives=difficulty.lives+boosts.lives*2;money=difficulty.money;spawning=false;waveSpawnedCount=0;waveTotalCount=0;lastBonusWave=0;
  balloons.forEach(b=>b.el.remove());balloons=[];towers.forEach(t=>t.el.remove());towers=[];
  applyMap(selectedMapId);
  document.getElementById("difficultyMenu").classList.remove("open");document.getElementById("upgradePanel").style.display="none";
@@ -348,7 +403,8 @@ function buyTower(id){
 function selectTower(id){
  if(!gameStarted){setMessage("Choose a difficulty first!");return}
  selectedTower=id;document.getElementById("towerMenu").classList.remove("open");document.getElementById("menuButton").textContent="<";
- setMessage("Place "+types[id].name+" #"+types[id].number+" on the grass.");
+ const info=types[id];
+ setMessage("Place "+info.name+(info.number?" #"+info.number:"")+" on the grass.");
 }
 function createPlayer(info){
  const p=document.createElement("div");p.className="soccerPlayer";
@@ -360,15 +416,33 @@ function createPlayer(info){
  const ball=document.createElement("div");ball.className="soccerBall";
  p.append(h,body,l1,l2,ball);return p;
 }
+function createFarmGoal(){
+ const g=document.createElement("div");g.className="goalFarm level0";
+ const post=document.createElement("div");post.className="goalPost";
+ const net=document.createElement("div");net.className="goalNet";
+ const label=document.createElement("div");label.className="goalLabel";label.textContent="🥅";
+ g.append(post,net,label);return g;
+}
+function refreshFarmLook(t){t.el.className="goalFarm level"+t.farmLevel}
 game.addEventListener("click",e=>{
  if(paused||!gameStarted||!selectedTower||e.target.closest(".deco")||e.target.closest("#upgradePanel"))return;
- if(e.target.closest(".soccerPlayer"))return;
+ if(e.target.closest(".soccerPlayer")||e.target.closest(".goalFarm"))return;
  const r=game.getBoundingClientRect(),x=e.clientX-r.left-26,y=e.clientY-r.top-32;
  const info=types[selectedTower];
- if(money<info.price){setMessage("Not enough coins.");return}
- money-=info.price;const el=createPlayer(info);el.style.left=x+"px";el.style.top=y+"px";game.appendChild(el);
- const t={el,x:x+26,y:y+32,type:selectedTower,cooldown:0,upgrades:{A:0,B:0,C:0},flipped:false};towers.push(t);
- el.onclick=ev=>{ev.stopPropagation();openUpgrade(t)};selectedTower=null;updateUI();saveGame(false);setMessage("⚽ Player placed!");
+ const price=Math.round(info.price*discountMultiplier());
+ if(money<price){setMessage("Not enough coins.");return}
+ money-=price;
+ let el,t;
+ if(info.isFarm){
+  el=createFarmGoal();el.style.left=x+"px";el.style.top=y+"px";game.appendChild(el);
+  t={el,x:x+26,y:y+32,type:selectedTower,isFarm:true,farmLevel:0,invested:price,flipped:false};
+ }else{
+  el=createPlayer(info);el.style.left=x+"px";el.style.top=y+"px";game.appendChild(el);
+  t={el,x:x+26,y:y+32,type:selectedTower,cooldown:0,upgrades:{A:0,B:0,C:0},invested:price,flipped:false};
+ }
+ towers.push(t);
+ el.onclick=ev=>{ev.stopPropagation();openUpgrade(t)};selectedTower=null;updateUI();saveGame(false);
+ setMessage(info.isFarm?"🥅 Goal Farm built!":"⚽ Player placed!");
 });
 /* Three upgrade paths per player. Each path's per-level (dmg,cd) contributions differ in shape,
    but every path sums to the SAME total by level 3 (dmg+6, cooldown-15), so all maxed paths end
@@ -397,6 +471,10 @@ function getCooldown(t){
  ["A","B","C"].forEach(p=>{const lvl=pathLevel(t,p);for(let i=0;i<lvl;i++)c-=PATH_STATS[p][i].cd;});
  return Math.max(2,c);
 }
+/* BTD6-style targeting rules: a player needs Lv2+ in ANY path to spot 🌀 Camo balloons,
+   and needs to have invested in 🔥 Path A (Power) to actually pop 🔩 Lead balloons. */
+function hasCamoDetection(t){return Math.max(0,...["A","B","C"].map(p=>pathLevel(t,p)))>=2}
+function canPopLead(t){return pathLevel(t,"A")>0}
 function refreshPlayerLook(t){
  t.el.classList.remove("upgrade1","upgrade2","upgrade3","pathA","pathB","pathC","dualPath");
  t.el.querySelectorAll(".playerBadge").forEach(b=>b.remove());
@@ -416,19 +494,42 @@ function refreshPlayerLook(t){
 }
 function openUpgrade(t){
  selectedPlayer=t;const info=types[t.type];
- document.getElementById("upgradeTitle").textContent="⚽ "+info.name+" #"+info.number;
- let statsHtml="Damage: "+getDamage(t)+"<br>Fire rate: "+getCooldown(t)+"<br>";
- ["A","B","C"].forEach(p=>{statsHtml+=PATH_INFO[p].icon+" "+p+": Lv "+pathLevel(t,p)+"/3"+(pathBlocked(t,p)?" (blocked)":"")+"<br>"});
- document.getElementById("upgradeStats").innerHTML=statsHtml;
  const panel=document.getElementById("upgradePanel");
  let btnBox=document.getElementById("pathButtonBox");
  if(!btnBox){
   btnBox=document.createElement("div");btnBox.id="pathButtonBox";
   panel.insertBefore(btnBox,panel.querySelector("button[onclick='closeUpgrade()']"));
  }
+ let sellBtn=document.getElementById("sellButton");
+ if(!sellBtn){
+  sellBtn=document.createElement("button");sellBtn.id="sellButton";
+  panel.insertBefore(sellBtn,panel.querySelector("button[onclick='closeUpgrade()']"));
+ }
+ const refund=Math.floor((t.invested||info.price)*0.6);
+ sellBtn.textContent="💵 Sell for "+refund+" Coins";
+ sellBtn.onclick=()=>sellTower(t);
+ if(t.isFarm){
+  document.getElementById("upgradeTitle").textContent="🥅 "+info.name;
+  const maxed=t.farmLevel>=info.incomeByLevel.length-1;
+  document.getElementById("upgradeStats").innerHTML="Level: "+(t.farmLevel+1)+"/"+info.incomeByLevel.length+"<br>Income: "+info.incomeByLevel[t.farmLevel]+" Coins every "+(FARM_INTERVAL/1000)+"s"+(maxed?"":"<br>Next level: "+info.incomeByLevel[t.farmLevel+1]+" Coins");
+  btnBox.innerHTML="";
+  const cost=Math.round(150*(t.farmLevel+1)*discountMultiplier());
+  const btn=document.createElement("button");btn.className="pathBtn";
+  btn.disabled=maxed;
+  btn.textContent=maxed?"🥅 Goal Farm MAXED":"⬆️ Upgrade to Lv"+(t.farmLevel+2)+" - "+cost+" Coins";
+  btn.onclick=()=>upgradeFarm(t);
+  btnBox.appendChild(btn);
+  panel.style.display="block";
+  return;
+ }
+ document.getElementById("upgradeTitle").textContent="⚽ "+info.name+" #"+info.number;
+ let statsHtml="Damage: "+getDamage(t)+"<br>Fire rate: "+getCooldown(t)+"<br>";
+ statsHtml+=(hasCamoDetection(t)?"👁️ Spots Camo":"🚫 Can't see Camo")+" | "+(canPopLead(t)?"🔩 Pops Lead":"🚫 Can't pop Lead")+"<br>";
+ ["A","B","C"].forEach(p=>{statsHtml+=PATH_INFO[p].icon+" "+p+": Lv "+pathLevel(t,p)+"/3"+(pathBlocked(t,p)?" (blocked)":"")+"<br>"});
+ document.getElementById("upgradeStats").innerHTML=statsHtml;
  btnBox.innerHTML="";
  ["A","B","C"].forEach(path=>{
-  const lvl=pathLevel(t,path),next=lvl+1,cost=50*next+Math.floor(info.price*.15);
+  const lvl=pathLevel(t,path),next=lvl+1,cost=Math.round((50*next+Math.floor(info.price*.15))*discountMultiplier());
   const blocked=pathBlocked(t,path);
   const btn=document.createElement("button");
   btn.className="pathBtn path"+path+"Btn";
@@ -442,22 +543,35 @@ function openUpgrade(t){
  panel.style.display="block";
 }
 function closeUpgrade(){selectedPlayer=null;document.getElementById("upgradePanel").style.display="none"}
+function sellTower(t){
+ const info=types[t.type],refund=Math.floor((t.invested||info.price)*0.6);
+ money+=refund;t.el.remove();towers=towers.filter(x=>x!==t);
+ closeUpgrade();updateUI();saveGame(false);setMessage("💵 Sold "+info.name+" for "+refund+" Coins.");
+}
+function upgradeFarm(t){
+ const info=types[t.type];
+ if(t.farmLevel>=info.incomeByLevel.length-1)return;
+ const cost=Math.round(150*(t.farmLevel+1)*discountMultiplier());
+ if(money<cost){setMessage("Not enough coins!");return}
+ money-=cost;t.farmLevel++;t.invested=(t.invested||info.price)+cost;refreshFarmLook(t);updateUI();openUpgrade(t);saveGame(false);
+}
 function upgrade(t,path){
  if(!t.upgrades)t.upgrades={A:0,B:0,C:0};
  if(pathBlocked(t,path)){setMessage("Path "+path+" is blocked - this player already committed to 2 other paths.");return}
  const next=t.upgrades[path]+1;if(next>3)return;
- const cost=50*next+Math.floor(types[t.type].price*.15);if(money<cost){setMessage("Not enough coins!");return}
- money-=cost;t.upgrades[path]=next;refreshPlayerLook(t);updateUI();openUpgrade(t);saveGame(false);
+ const cost=Math.round((50*next+Math.floor(types[t.type].price*.15))*discountMultiplier());if(money<cost){setMessage("Not enough coins!");return}
+ money-=cost;t.upgrades[path]=next;t.invested=(t.invested||types[t.type].price)+cost;refreshPlayerLook(t);updateUI();openUpgrade(t);saveGame(false);
 }
 function startWave(){
  if(!gameStarted||paused||gameWon)return;
- if(spawning||balloons.length){setMessage("Finish the current wave first!");return}
+ if(spawning||balloons.length||pendingChildSpawns){setMessage("Finish the current wave first!");return}
  if(wave>=difficulty.waves)return;
  wave++;spawning=true;const amount=5+wave*2;
  waveSpawnedCount=0;waveTotalCount=amount;updateUI();
  for(let i=0;i<amount;i++)setTimeout(()=>{if(!paused&&!gameWon)spawnBalloon()},i*850);
+ if(wave%5===0)setTimeout(()=>{if(!paused&&!gameWon)spawnBoss()},400);
  setTimeout(()=>{spawning=false},amount*850);
- setMessage("🎈 Wave "+wave+" / "+difficulty.waves+" started!");updateUI();saveGame(false);
+ setMessage("🎈 Wave "+wave+" / "+difficulty.waves+" started!"+(wave%5===0?" 👹 Boss incoming!":""));updateUI();saveGame(false);
 }
 function toggleAutoWave(){
  autoWave=!autoWave;
@@ -465,6 +579,16 @@ function toggleAutoWave(){
  b.textContent=autoWave?"🔁 Auto: On":"🔁 Auto: Off";
  b.classList.toggle("active",autoWave);
  saveGame(false);
+}
+function toggleGameSpeed(){
+ gameSpeed=gameSpeed===2?1:2;
+ updateSpeedButton();saveGame(false);
+}
+function updateSpeedButton(){
+ const b=document.getElementById("speedButton");if(!b)return;
+ const label=Number.isInteger(gameSpeed)?gameSpeed:gameSpeed.toFixed(1);
+ b.textContent="⏩ "+label+"x Speed";
+ b.classList.toggle("active",gameSpeed!==1);
 }
 setInterval(()=>{
  if(gameStarted&&!gameWon&&!paused&&autoWave&&!spawning&&!balloons.length&&wave<difficulty.waves)startWave();
@@ -544,6 +668,23 @@ function tierForWave(){
  idx=Math.max(0,idx-Math.floor(Math.random()*2));
  return Math.min(BALLOON_TIERS-1,idx);
 }
+/* BTD6-style special balloon properties, unlocked gradually as waves progress. */
+function rollBalloonProps(){
+ const props={camo:false,lead:false,regrow:false,fortified:false};
+ if(wave>=3&&Math.random()<0.10+wave*0.004)props.camo=true;
+ if(wave>=6&&Math.random()<0.09+wave*0.004)props.lead=true;
+ if(wave>=8&&Math.random()<0.07+wave*0.003)props.regrow=true;
+ if(wave>=4&&Math.random()<0.09+wave*0.004)props.fortified=true;
+ return props;
+}
+function applyBalloonProps(el,b,props){
+ b.camo=props.camo;b.lead=props.lead;b.regrow=props.regrow;b.fortified=props.fortified;
+ if(props.fortified){b.hp=Math.round(b.hp*2);b.maxHp=b.hp;el.style.outline="3px solid #fff";el.style.outlineOffset="2px"}
+ if(props.lead){el.style.background="linear-gradient(135deg,#9a9a9a,#4a4a4a)";el.style.border="2px solid #2b2b2b"}
+ if(props.camo){el.style.opacity="0.5"}
+ const icons=(props.camo?"🌀":"")+(props.lead?"🔩":"")+(props.regrow?"➕":"")+(props.fortified?"🛡️":"");
+ if(icons){const badge=document.createElement("div");badge.className="balloonBadge";badge.textContent=icons;el.appendChild(badge)}
+}
 function spawnBalloon(){
  if(!difficulty)return;
  const tierIdx=tierForWave(),tier=balloonTiers[tierIdx];
@@ -555,13 +696,53 @@ function spawnBalloon(){
  el.style.transform="scale("+tier.scale.toFixed(2)+")";
  game.appendChild(el);
  const p=pathPoints[0];el.style.left=p.x-11+"px";el.style.top=p.y-14+"px";
- balloons.push({el,x:p.x,y:p.y,i:1,speed:(difficulty.speed+wave*.005)*tier.speedMult,hp:Math.ceil(difficulty.balloonHealth*tier.hp*(1+Math.floor(wave/4))),hitRadius:20*Math.min(1.7,tier.scale),reward:tier.reward});
+ const hp=Math.ceil(difficulty.balloonHealth*tier.hp*(1+Math.floor(wave/4)));
+ const b={el,x:p.x,y:p.y,i:1,speed:(difficulty.speed+wave*.005)*tier.speedMult,hp,maxHp:hp,hitRadius:20*Math.min(1.7,tier.scale),reward:tier.reward};
+ applyBalloonProps(el,b,rollBalloonProps());
+ balloons.push(b);
  waveSpawnedCount++;updateUI();
 }
+function spawnChildBalloon(x,y,idx){
+ const tierIdx=Math.max(0,tierForWave()-4),tier=balloonTiers[tierIdx];
+ const el=document.createElement("div");el.className="balloon";
+ const s=document.createElement("div");s.className="string";el.appendChild(s);
+ el.style.background=tier.color;
+ el.style.boxShadow=(tier.glow!=="none"?tier.glow+", ":"")+"inset -5px -6px rgba(0,0,0,.18),3px 3px 4px rgba(0,0,0,.25)";
+ if(tier.border!=="none")el.style.border=tier.border;
+ el.style.transform="scale("+tier.scale.toFixed(2)+")";
+ game.appendChild(el);
+ el.style.left=x-11+"px";el.style.top=y-14+"px";
+ const hp=Math.max(1,Math.ceil(difficulty.balloonHealth*tier.hp*(1+Math.floor(wave/4))*0.5));
+ balloons.push({el,x,y,i:idx,speed:(difficulty.speed+wave*.005)*tier.speedMult,hp,maxHp:hp,hitRadius:20*Math.min(1.7,tier.scale),reward:Math.round(tier.reward*0.6)});
+ waveSpawnedCount++;updateUI();
+}
+/* MOAB-style boss balloon: huge, slow, and releases a swarm of children when it finally pops. */
+let pendingChildSpawns=0;
+function spawnBoss(){
+ if(!difficulty)return;
+ const el=document.createElement("div");el.className="balloon boss";
+ const s=document.createElement("div");s.className="string";el.appendChild(s);
+ const label=document.createElement("div");label.className="bossLabel";label.textContent="BOSS";el.appendChild(label);
+ el.style.background="radial-gradient(circle at 35% 30%, #7a0000, #1a0000)";
+ el.style.border="4px solid #ff3b3b";
+ el.style.boxShadow="0 0 26px rgba(255,40,40,.85), 0 0 48px rgba(255,0,0,.5)";
+ const scale=2.4+Math.min(1.6,wave*0.02);
+ el.style.transform="scale("+scale.toFixed(2)+")";
+ game.appendChild(el);
+ const p=pathPoints[0];el.style.left=p.x-11+"px";el.style.top=p.y-14+"px";
+ const hp=Math.ceil(difficulty.balloonHealth*(50+wave*6));
+ const reward=80+wave*6;
+ const children=8+Math.floor(wave/5);
+ balloons.push({el,x:p.x,y:p.y,i:1,speed:difficulty.speed*0.5,hp,maxHp:hp,hitRadius:22*Math.min(2.4,scale),reward,isBoss:true,children});
+ waveSpawnedCount++;waveTotalCount++;updateUI();
+ setMessage("👹 BOSS incoming on wave "+wave+"!");
+}
 function moveBalloon(b){
+ if(b.regrow&&b.hp<b.maxHp)b.hp=Math.min(b.maxHp,b.hp+b.maxHp*0.0018*gameSpeed);
  if(b.i>=pathPoints.length)return;
+ const spd=b.speed*gameSpeed;
  const p=pathPoints[b.i],dx=p.x-b.x,dy=p.y-b.y,d=Math.hypot(dx,dy);
- if(d<=b.speed+1){b.x=p.x;b.y=p.y;b.i++;}else{b.x+=dx/d*b.speed;b.y+=dy/d*b.speed}
+ if(d<=spd+1){b.x=p.x;b.y=p.y;b.i++;}else{b.x+=dx/d*spd;b.y+=dy/d*spd}
  b.el.style.left=b.x-11+"px";b.el.style.top=b.y-14+"px";
 }
 function kick(t,target){
@@ -571,19 +752,38 @@ function kick(t,target){
 }
 function shoot(t,target){
  const maxLvl=Math.max(0,...activePaths(t).map(p=>pathLevel(t,p)));
+ const canSeeCamo=hasCamoDetection(t),popsLead=canPopLead(t);
  kick(t,target);const s=document.createElement("div");s.className="shot";
  if(maxLvl>=2)s.classList.add("power");if(maxLvl>=3)s.classList.add("super");game.appendChild(s);
  let x=t.x,y=t.y,dx=target.x-x,dy=target.y-y,d=Math.hypot(dx,dy)||1,v=12+maxLvl,vx=dx/d*v,vy=dy/d*v,hit=new Set();
  const timer=setInterval(()=>{
-  if(paused)return;x+=vx;y+=vy;s.style.left=x+"px";s.style.top=y+"px";
-  balloons.slice().forEach(b=>{if(hit.has(b))return;if(Math.hypot(b.x-x,b.y-y)<(b.hitRadius||20)){hit.add(b);b.hp-=getDamage(t);if(b.hp<=0)popBalloon(b)}});
+  if(paused)return;x+=vx*gameSpeed;y+=vy*gameSpeed;s.style.left=x+"px";s.style.top=y+"px";
+  balloons.slice().forEach(b=>{
+   if(hit.has(b))return;
+   if(b.camo&&!canSeeCamo)return;
+   if(Math.hypot(b.x-x,b.y-y)<(b.hitRadius||20)){
+    hit.add(b);
+    if(b.lead&&!popsLead)return;
+    b.hp-=getDamage(t);if(b.hp<=0)popBalloon(b);
+   }
+  });
   if(x<-60||x>980||y<-60||y>620){clearInterval(timer);s.remove()}
  },20);
 }
 function popBalloon(b){
  if(!balloons.includes(b))return;b.el.remove();balloons=balloons.filter(x=>x!==b);
- money+=Math.round((b.reward||10)*cashMultiplier());
+ money+=Math.round((b.reward||10)*cashMultiplier()*powerCashMult);
  if(Math.random()<luckChance()){coins+=1;setMessage("🍀 Lucky pop! +1 Gem");}
+ if(b.isBoss){
+  setMessage("💥 BOSS DOWN! Releasing "+b.children+" balloons!");
+  pendingChildSpawns+=b.children;
+  for(let k=0;k<b.children;k++){
+   setTimeout(()=>{
+    if(!gameWon)spawnChildBalloon(b.x,b.y,b.i);
+    pendingChildSpawns=Math.max(0,pendingChildSpawns-1);
+   },k*120);
+  }
+ }
  updateUI();
 }
 function togglePause(){
@@ -591,29 +791,40 @@ function togglePause(){
 }
 function saveGame(show){
  const id=difficulty?Object.keys(difficulties).find(k=>difficulties[k]===difficulty):null;
- const data={money,coins,lives,wave,difficulty:id,unlocked,unlockedMaps,boosts,mapId:selectedMapId,autoWave,towers:towers.map(t=>({x:t.x,y:t.y,type:t.type,upgrades:t.upgrades,flipped:t.flipped}))};
+ const data={money,coins,lives,wave,difficulty:id,unlocked,unlockedMaps,boosts,mapId:selectedMapId,autoWave,gameSpeed,godMode,towers:towers.map(t=>({x:t.x,y:t.y,type:t.type,upgrades:t.upgrades,flipped:t.flipped,isFarm:t.isFarm,farmLevel:t.farmLevel,invested:t.invested}))};
  localStorage.setItem(SAVE_KEY,JSON.stringify(data));if(show)setMessage("💾 Game saved!");
 }
 function loadGame(show){
  const raw=localStorage.getItem(SAVE_KEY);if(!raw){if(show)setMessage("No save found.");return}
  try{
   const d=JSON.parse(raw);difficulty=d.difficulty?difficulties[d.difficulty]:null;gameStarted=!!difficulty;
-  money=Number(d.money)||500;coins=Number(d.coins)||0;lives=Number(d.lives)||(difficulty?difficulty.lives:20);wave=Number(d.wave)||0;unlocked=Array.isArray(d.unlocked)?d.unlocked:["player0","player1","player2","player3","player4"];
+  money=Number(d.money)||500;coins=Number(d.coins)||0;lives=Number(d.lives)||(difficulty?difficulty.lives:20);wave=Number(d.wave)||0;unlocked=Array.isArray(d.unlocked)?d.unlocked:["player0","player1","player2","player3","player4","farm"];
   for(let i=0;i<5;i++)if(!unlocked.includes("player"+i))unlocked.push("player"+i);
+  if(!unlocked.includes("farm"))unlocked.push("farm");
   unlockedMaps=Array.isArray(d.unlockedMaps)?d.unlockedMaps:["classic","zigzag","river"];
   ["classic","zigzag","river"].forEach(id=>{if(!unlockedMaps.includes(id))unlockedMaps.push(id)});
-  boosts=Object.assign({cash:0,luck:0,gem:0},d.boosts||{});
-  selectedMapId=(d.mapId&&maps[d.mapId]&&isMapUnlocked(d.mapId))?d.mapId:"classic";applyMap(selectedMapId);buildMapButtons();buildWorldShop();buildBoostShop();
+  boosts=Object.assign({cash:0,luck:0,gem:0,lives:0,discount:0},d.boosts||{});
+  selectedMapId=(d.mapId&&maps[d.mapId]&&isMapUnlocked(d.mapId))?d.mapId:"classic";applyMap(selectedMapId);buildMapButtons();buildWorldShop();buildBoostShop();buildEconomyShop();buildPowerShop();
   autoWave=!!d.autoWave;const awb=document.getElementById("autoWaveButton");if(awb){awb.textContent=autoWave?"🔁 Auto: On":"🔁 Auto: Off";awb.classList.toggle("active",autoWave)}
+  gameSpeed=Math.min(100,Math.max(0.1,Number(d.gameSpeed)||1));updateSpeedButton();
+  godMode=!!d.godMode;
+  lastBonusWave=wave;
   towers.forEach(t=>t.el.remove());towers=[];balloons.forEach(b=>b.el.remove());balloons=[];
   (d.towers||[]).forEach(z=>{
-   const info=types[z.type];if(!info)return;const el=createPlayer(info);el.style.left=z.x-26+"px";el.style.top=z.y-32+"px";game.appendChild(el);
+   const info=types[z.type];if(!info)return;
+   if(z.isFarm||info.isFarm){
+    const el=createFarmGoal();el.style.left=z.x-26+"px";el.style.top=z.y-32+"px";game.appendChild(el);
+    const t={el,x:z.x,y:z.y,type:z.type,isFarm:true,farmLevel:Number(z.farmLevel)||0,invested:Number(z.invested)||info.price,flipped:false};
+    refreshFarmLook(t);towers.push(t);el.onclick=e=>{e.stopPropagation();openUpgrade(t)};
+    return;
+   }
+   const el=createPlayer(info);el.style.left=z.x-26+"px";el.style.top=z.y-32+"px";game.appendChild(el);
    let upgrades=z.upgrades;
    if(!upgrades){ // backward compatibility with old single-path saves
     upgrades={A:0,B:0,C:0};
     if(z.upgradePath&&z.upgradeLevel)upgrades[z.upgradePath]=z.upgradeLevel;
    }
-   const t={el,x:z.x,y:z.y,type:z.type,cooldown:0,upgrades,flipped:!!z.flipped};
+   const t={el,x:z.x,y:z.y,type:z.type,cooldown:0,upgrades,invested:Number(z.invested)||info.price,flipped:!!z.flipped};
    refreshPlayerLook(t);el.style.transform=t.flipped?"scaleX(-1)":"scaleX(1)";
    towers.push(t);el.onclick=e=>{e.stopPropagation();openUpgrade(t)}
   });
@@ -624,17 +835,46 @@ window.addEventListener("beforeunload",()=>saveGame(false));
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")saveGame(false)});
 setInterval(()=>saveGame(false),10000);
 setInterval(()=>{
- if(gameStarted&&!gameWon&&!paused&&wave>0&&!balloons.length&&wave>=difficulty.waves){
+ if(gameStarted&&!gameWon&&!paused&&wave>0&&!balloons.length&&!pendingChildSpawns&&wave>=difficulty.waves){
   gameWon=true;paused=true;coins+=Math.round(difficulty.waves*gemMultiplier());updateUI();saveGame(false);alert("🏆 YOU WIN! +" + Math.round(difficulty.waves*gemMultiplier()) + " gems!");
  }
 },250);
+/* Goal Farms pay out passive Coins on a timer, like BTD6 banana farms. */
+setInterval(()=>{
+ if(!gameStarted||paused||gameWon)return;
+ let total=0;
+ towers.forEach(t=>{if(t.isFarm)total+=types[t.type].incomeByLevel[t.farmLevel]});
+ if(total>0){money=Math.round(money+total*cashMultiplier());updateUI();saveGame(false);setMessage("🥅 Goal Farms earned +"+total+" Coins!");}
+},FARM_INTERVAL);
+/* A small Coin bonus for finishing each round, like BTD6's round cash. */
+let lastBonusWave=0;
+setInterval(()=>{
+ if(gameStarted&&!gameWon&&!paused&&!spawning&&!pendingChildSpawns&&!balloons.length&&wave>0&&wave>lastBonusWave&&wave<difficulty.waves){
+  lastBonusWave=wave;
+  const bonus=Math.round((20+wave*4)*cashMultiplier());
+  money+=bonus;updateUI();saveGame(false);setMessage("🏁 Round "+wave+" complete! +"+bonus+" Coins bonus");
+ }
+},400);
 function gameOver(){
  paused=true;alert("💀 GAME OVER! You reached wave "+wave+".");startDifficulty(Object.keys(difficulties).find(k=>difficulties[k]===difficulty));
 }
+function pickTarget(t){
+ const canSeeCamo=hasCamoDetection(t);
+ for(let i=balloons.length-1;i>=0;i--){
+  const b=balloons[i];
+  if(b.camo&&!canSeeCamo)continue;
+  return b;
+ }
+ return null;
+}
 function loop(){
  if(!paused&&gameStarted&&!gameWon){
-  balloons.slice().forEach(b=>{moveBalloon(b);if(b.i>=pathPoints.length){b.el.remove();balloons=balloons.filter(x=>x!==b);lives--;updateUI();if(lives<=0)gameOver()}});
-  towers.forEach(t=>{if(t.cooldown>0)t.cooldown--;else if(balloons.length){let target=balloons[balloons.length-1];shoot(t,target);t.cooldown=getCooldown(t)}});
+  balloons.slice().forEach(b=>{moveBalloon(b);if(b.i>=pathPoints.length){b.el.remove();balloons=balloons.filter(x=>x!==b);if(!godMode){lives--;if(lives<=0)gameOver()}updateUI();}});
+  towers.forEach(t=>{
+   if(t.isFarm)return;
+   if(t.cooldown>0)t.cooldown-=gameSpeed*powerFireRateMult;
+   else{const target=pickTarget(t);if(target){shoot(t,target);t.cooldown=getCooldown(t)}}
+  });
  }
  requestAnimationFrame(loop);
 }
@@ -649,7 +889,7 @@ function devLog(msg,isErr){
 }
 function toggleDevConsole(){
  const open=devConsoleEl.classList.toggle("open");
- if(open){devInputEl.value="";devInputEl.focus();if(!devLogEl.childElementCount)devLog("Dev console ready. Try: givegems 100, givecoins 500");}
+ if(open){devInputEl.value="";devInputEl.focus();if(!devLogEl.childElementCount)devLog("Dev console ready. Try: givegems 100, givecoins 500, setspeed 5, infhp");}
  else devInputEl.blur();
 }
 function runDevCommand(raw){
@@ -663,8 +903,17 @@ function runDevCommand(raw){
  }else if(cmd==="givecoins"){
   money+=amount;updateUI();saveGame(false);
   devLog("✅ Gave "+amount+" Coins. Total Coins: "+money);
+ }else if(cmd==="setspeed"){
+  if(parts[1]===undefined){devLog("Usage: setspeed [0.1-100]",true);return}
+  const val=Math.min(100,Math.max(0.1,parseFloat(parts[1])));
+  if(isNaN(val)){devLog("Usage: setspeed [0.1-100]",true);return}
+  gameSpeed=val;updateSpeedButton();saveGame(false);
+  devLog("✅ Game speed set to "+val+"x (affects balloons + towers, max 100x)");
+ }else if(cmd==="infhp"){
+  godMode=!godMode;updateUI();saveGame(false);
+  devLog(godMode?"✅ God mode ON — infinite lives, balloons can't hurt you.":"❎ God mode OFF — lives are normal again.");
  }else if(cmd==="help"){
-  devLog("Commands: givegems [amount], givecoins [amount], clear");
+  devLog("Commands: givegems [amount], givecoins [amount], setspeed [0.1-100], infhp, clear");
  }else if(cmd==="clear"){
   devLogEl.innerHTML="";
  }else{
@@ -687,7 +936,7 @@ window.addEventListener("keydown",e=>{
 window.addEventListener("keyup",e=>{heldKeys.delete(e.key.toLowerCase())});
 window.addEventListener("blur",()=>heldKeys.clear());
 
-buildShop();buildMapButtons();buildWorldShop();buildBoostShop();computePathPoints();updateUI();drawTrackDecor();
+buildShop();buildMapButtons();buildWorldShop();buildBoostShop();buildEconomyShop();buildPowerShop();computePathPoints();updateUI();drawTrackDecor();
 if(localStorage.getItem(SAVE_KEY)){loadGame(false);if(!gameStarted)showDifficultyMenu()}else setTimeout(showDifficultyMenu,250);
 loop();
 </script>
